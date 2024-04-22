@@ -5,18 +5,38 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms
 import numpy as np
 
-# 定义生成器模型
+class ContentAttention(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(ContentAttention, self).__init__()
+        self.linear1 = nn.Linear(input_size, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, 1)
+        self.softmax = nn.Softmax(dim=1)
+    
+    def forward(self, x):
+        # 计算注意力权重
+        x = torch.tanh(self.linear1(x))
+        x = self.linear2(x)
+        attention_weights = self.softmax(x)
+        # 加权求和
+        output = torch.sum(x * attention_weights, dim=1, keepdim=True)
+        return output
+
 class Generator(nn.Module):
     def __init__(self, input_size, output_size):
         super(Generator, self).__init__()
-        self.fc = nn.Linear(input_size, 256)
+        self.fc1 = nn.Linear(input_size, 256)
         self.fc2 = nn.Linear(256, output_size)
         self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
+        self.attention = ContentAttention(output_size, 128)
 
-    def forward(self, x):
-        x = self.relu(self.fc(x))
-        x = self.tanh(self.fc2(x))
+    def forward(self, z, condition):
+        # 将条件数据与输入噪声拼接
+        x = torch.cat((z, condition), dim=1)
+        x = self.relu(self.fc1(x))
+        # 使用内容注意力机制调整生成的数据
+        attention_weights = self.attention(x)
+        x = x * attention_weights
+        x = self.fc2(x)
         return x
 
 # 定义鉴别器模型
@@ -45,6 +65,7 @@ class CGAN(nn.Module):
         return fake_data
 
 # 定义系统发育树信息
+
 Edge = torch.randn(13307, 2)  # 用随机数据代替
 Number_of_Nodes = 6634
 Tip_Labels = torch.tensor([str(i) for i in range(6674)])

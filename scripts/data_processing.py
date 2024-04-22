@@ -1,42 +1,60 @@
-import numpy as np
 import torch
-# data_matrix是6674*98丰度信息矩阵
-# num_samples是98个样本的总数
 
-# 设置划分比例
-def split_data_random(data_matrix: torch.tensor):
-    train_ratio = 0.7
-    val_ratio = 0.15
-    # test_ratio = 0.15
-    num_samples = data_matrix.shape[1]
+class TreeMatrixMessage:
+    def __init__(self, tree_data):
+        # super(TreeMatrixMessage, self).__init__()
+        self.tree_data = tree_data
+        self.nodes_number = self.get_all_node_nums()
 
-    # 计算每个集合的大小
-    num_train = int(num_samples * train_ratio)
-    num_val = int(num_samples * val_ratio)
-    num_test = num_samples - num_train - num_val
+    def create_indexed_tensor(self):
+        """
+        创建一个索引张量，用于填充邻接矩阵或边长矩阵。
+        :param tree_data: 包含系统发育树数据的字典。
+        :return: 一个形状为 [边的数量, 2] 的张量，其中包含边的索引。
+        """
+        Edge = self.tree_data["Edge"]
+        indices = torch.tensor(Edge)
+        return indices
 
-    # 随机打乱样本索引
-    indices = np.arange(num_samples)
-    np.random.shuffle(indices)
+    def make_adjacency_matrix(self):
+        """创建邻接矩阵"""
+        indices = self.create_indexed_tensor()
+        adjacency_matrix = torch.zeros(self.nodes_number, self.nodes_number, dtype=torch.float)
 
-    # 划分数据集
-    train_indices = indices[:num_train]
-    val_indices = indices[num_train:num_train + num_val]
-    test_indices = indices[num_train + num_val:]
+        adjacency_matrix[indices[:, 0] - 1, indices[:, 1] - 1] = 1
+        return adjacency_matrix
 
-    # 使用划分的索引来选择对应的样本
-    train_data = data_matrix[train_indices, :]
-    val_data = data_matrix[val_indices, :]
-    test_data = data_matrix[test_indices, :]
-    return train_data, val_data, test_data
+    def make_edge_lengths_matrix(self, normalization=None):
+        """创建边长矩阵"""
+        Edge_Lengths = torch.tensor(self.tree_data["Edge_Lengths"])
+        indices = self.create_indexed_tensor()
+        
+        # 边长归一化
+        if normalization:
+            Edge_Lengths = (Edge_Lengths - Edge_Lengths.mean()) / Edge_Lengths.std()
 
-if __name__=="__main__":
-    import pickle
-    with open('data/raw/combo.pkl', 'rb') as f:
-        my_data = pickle.load(f)
+        # 需要确保 Edge_Lengths 的数据类型与 adjacency_matrix 一致
+        edge_lengths_matrix = torch.zeros(self.nodes_number, self.nodes_number, dtype=torch.float)
+        # _Edge_Lengths = Edge_Lengths.clone().detach()
+        edge_lengths_matrix[indices[:, 0] - 1, indices[:, 1] - 1] = torch.tensor(Edge_Lengths.clone().detach())
+        return edge_lengths_matrix
 
-    otu_tab = my_data["otu_tab(df)"]
-    df = otu_tab.sort_index(axis=1)
-    df = df.sort_index()
-    otu_tab_tensor_data = torch.tensor(df.values)
-    train_data, val_data, test_data = split_data_random(otu_tab_tensor_data)
+    def make_tree_matrix(self):
+        """创建树矩阵, 包含邻接矩阵和边长矩阵"""
+        adjacency_matrix = self.make_adjacency_matrix()
+        edge_lengths_matrix = self.make_edge_lengths_matrix()
+        return torch.where(adjacency_matrix == 1, edge_lengths_matrix, float('inf'))
+    
+
+    def get_all_node_nums(self):
+        """获得节点数量"""
+        edge = self.tree_data["Edge"]
+        
+        node_set = {node for every_edge in edge for node in every_edge}
+        return len(node_set)
+
+    def get_edges_count(self):
+        """获得边的数量"""
+        edge_lengths = self.tree_data["Edge_Lengths"]
+        
+        return len(edge_lengths)
