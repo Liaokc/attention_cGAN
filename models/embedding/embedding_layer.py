@@ -49,7 +49,7 @@ class GraphAttentionLayer_EFA(nn.Module):
         :return h_prime: 注意力分数矩阵 (N, N)
         """
         # 计算 h = input * W_h
-        h = torch.mm(input, self.Wh)  # input: (N, in_features), W: (in_features, out_features), h: (N, out_features)
+        h = torch.mm(input, self.Wh)  # input: (N, in_features), Wh: (in_features, out_features), h: (N, out_features)
         N = h.size()[0]
         
         # 计算 cij
@@ -88,7 +88,7 @@ class GraphAttentionLayer_EFA(nn.Module):
         #原有dropout
         # h_prime (N, out_features)
         h_prime = torch.matmul(attention, h)     #=∑ α_ij · Wh · h_j 
-        # （N, N）
+        # (N, out_features)
         h_prime = self.bn(h_prime)
         if self.lastact == True:
             output = self.activation(h_prime)  # output = δ(∑ α_ij·Wh·h_j)
@@ -127,3 +127,18 @@ class OutputLayer(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+    
+class LayerNorm(nn.Module):
+    def __init__(self, d_model, eps=1e-10):
+        super(LayerNorm, self).__init__()
+        self.gamma = nn.Parameter(torch.ones(d_model))
+        self.beta = nn.Parameter(torch.zeros(d_model))
+        self.eps = eps  # 用于稳定计算的小值, 默认为1e-10
+
+    def forward(self, x):
+        mean = x.mean(-1, keepdim=True)
+        var = x.var(-1, unbiased=False, keepdim=True)
+        out = (x - mean) / torch.sqrt(var + self.eps)
+        out = self.gamma * out + self.beta
+        return out
+        
